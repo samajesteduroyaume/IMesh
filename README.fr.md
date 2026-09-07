@@ -43,6 +43,13 @@ IMesh gateway --host 127.0.0.1 --port 8000
 Le gateway expose `/api/v1/health`, `/api/v1/skills`, `/api/v1/execute`,
 `/api/v1/models`, ainsi que des routes compatibles OpenAI et Anthropic.
 
+## Skill ClawHub
+
+Le paquet de skill agent est disponible dans
+[skills/imesh/SKILL.md](skills/imesh/SKILL.md) et décrit par
+[clawhub.json](clawhub.json). Il documente les commandes sûres pour démarrer un
+nœud, découvrir les pairs de confiance, appeler un skill et vérifier le gateway.
+
 ## Configuration
 
 Toutes les variables utilisent le préfixe `OPENCLAW_` pour conserver la

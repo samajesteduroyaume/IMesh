@@ -1,0 +1,13 @@
+{
+  "name": "imesh",
+  "version": "0.1.0",
+  "description": "Operate a secure local-first IMesh network for AI agents.",
+  "license": "MIT",
+  "skills": [
+    "skills/imesh/SKILL.md"
+  ],
+  "runtime": {
+    "python": ">=3.10",
+    "package": "IMesh"
+  }
+}

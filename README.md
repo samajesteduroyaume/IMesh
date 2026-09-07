@@ -27,6 +27,13 @@ The HTTP gateway provides health, skill listing, local execution, model listing,
 and OpenAI/Anthropic-compatible endpoints. Skills are executed through the same
 registry used by the WebSocket node.
 
+## ClawHub skill
+
+The agent skill package is available at [skills/imesh/SKILL.md](skills/imesh/SKILL.md)
+and is described by [clawhub.json](clawhub.json). It provides safe commands for
+starting a node, discovering trusted peers, calling skills, and checking the
+gateway.
+
 ## Configuration
 
 Configuration uses the `OPENCLAW_` environment prefix:
