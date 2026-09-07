@@ -1,0 +1,52 @@
+Metadata-Version: 2.4
+Name: openclaw-mesh
+Version: 0.1.0
+Summary: OpenClaw Mesh — a local-first intelligent mesh network
+Author: OpenClaw
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: asyncio
+Requires-Dist: pydantic>=2.7.0
+Requires-Dist: pydantic-settings>=2.2.0
+Requires-Dist: websockets>=12.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: fastapi>=0.110.0
+Requires-Dist: uvicorn>=0.29.0
+Requires-Dist: zeroconf>=0.132.2
+Requires-Dist: cryptography>=42.0.0
+Requires-Dist: python-dotenv>=1.0.1
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23.0; extra == "dev"
+Requires-Dist: pytest-cov>=5.0.0; extra == "dev"
+Requires-Dist: ruff>=0.5.0; extra == "dev"
+Requires-Dist: black>=24.0.0; extra == "dev"
+Requires-Dist: mypy>=1.10.0; extra == "dev"
+
+# IMesh / OpenClaw Mesh
+
+This project provides a lightweight, modular Python mesh for local AI-agent discovery, task execution, and secure peer coordination.
+
+## Getting started
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+openclaw-mesh --help
+```
+
+## Features
+
+- Async WebSocket node runtime
+- Signed task protocol
+- Skill registry
+- Encrypted E2EE payload support
+- Local peer discovery with mDNS
+- FastAPI gateway and local portal
+- Optional hardware-aware inference backends with CPU fallback
+
+## License
+
+MIT

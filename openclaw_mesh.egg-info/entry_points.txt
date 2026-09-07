@@ -1,0 +1,2 @@
+[console_scripts]
+openclaw-mesh = openclaw_mesh.cli:main
