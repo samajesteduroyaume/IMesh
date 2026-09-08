@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import socket
+import time
 from dataclasses import dataclass, field
 from ipaddress import ip_address
 from typing import Any
@@ -20,13 +21,16 @@ class PeerInfo:
     port: int
     skills: list[str] = field(default_factory=list)
     protocol_version: str = "0.1.0"
+    last_seen: int = field(default_factory=lambda: int(time.time()))
+    reachable: bool = True
 
 
 class MeshDiscovery:
-    def __init__(self, node_name: str, port: int, enabled: bool = True) -> None:
+    def __init__(self, node_name: str, port: int, enabled: bool = True, peer_ttl_seconds: int = 120) -> None:
         self.node_name = node_name
         self.port = port
         self.enabled = enabled
+        self.peer_ttl_seconds = peer_ttl_seconds
         self.peers: dict[str, PeerInfo] = {}
         self.zc: Zeroconf | None = None
         self.browser: Any | None = None
@@ -75,10 +79,19 @@ class MeshDiscovery:
         self.browser = None
 
     def add_peer(self, peer: PeerInfo) -> None:
+        now = int(time.time())
+        peer.last_seen = getattr(peer, "last_seen", now)
+        peer.reachable = True
         self.peers[peer.name] = peer
 
     def discover_now(self) -> list[PeerInfo]:
-        return list(self.peers.values())
+        now = int(time.time())
+        all_peers: list[PeerInfo] = []
+        for peer in self.peers.values():
+            peer.last_seen = getattr(peer, "last_seen", now)
+            peer.reachable = (now - int(peer.last_seen)) <= self.peer_ttl_seconds
+            all_peers.append(peer)
+        return all_peers
 
     def publish(self, skills: list[str] | None = None) -> None:
         if self.zc is None or ServiceInfo is None:
@@ -113,5 +126,7 @@ class MeshDiscovery:
         self, name: str, host: str, port: int, skills: list[str] | None = None
     ) -> PeerInfo:
         peer = PeerInfo(name=name, host=host, port=port, skills=skills or [])
+        peer.last_seen = int(time.time())
+        peer.reachable = True
         self.add_peer(peer)
         return peer

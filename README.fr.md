@@ -41,7 +41,26 @@ IMesh gateway --host 127.0.0.1 --port 8000
 ```
 
 Le gateway expose `/api/v1/health`, `/api/v1/skills`, `/api/v1/execute`,
-`/api/v1/models`, ainsi que des routes compatibles OpenAI et Anthropic.
+`/api/v1/models`, `/api/v1/portal-data`, ainsi que des routes compatibles OpenAI et Anthropic.
+
+Le portail web accessible sur `http://127.0.0.1:8000/` fournit désormais :
+
+- un tableau de bord de supervision avec métriques rapides,
+- la liste des peers avec recherche, filtres par statut/skill et statut de disponibilité,
+- les diagnostics du gateway,
+- les logs récents avec recherche avancée par texte et niveau,
+- l’export JSON des diagnostics et des logs,
+- un test manuel des skills via l’interface.
+
+Exemples d’API compatibles :
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"openclaw-mesh","messages":[{"role":"user","content":"bonjour"}]}'
+
+curl http://127.0.0.1:8000/api/v1/portal-data
+```
 
 ## Skill ClawHub
 
@@ -61,6 +80,7 @@ export OPENCLAW_PSK='une-cle-secrete-longue'
 export OPENCLAW_MDNS_ENABLED=true
 export OPENCLAW_WAN_ENABLED=false
 export OPENCLAW_GATEWAY_DB_PATH=./openclaw_gateway.db
+export OPENCLAW_PEER_TTL_SECONDS=120
 ```
 
 WAN, DHT, QUIC et gossip sont désactivés par défaut. Leur activation doit être
@@ -72,8 +92,10 @@ explicite et accompagnée d'une authentification adaptée au déploiement.
 - Protocole de tâches signé
 - Registre de skills
 - Support E2EE pour les payloads
-- Découverte locale de pairs via mDNS
-- Passerelle FastAPI et portail local
+- Découverte locale de pairs via mDNS avec TTL configurable
+- Passerelle FastAPI et portail local enrichi
+- Endpoints compatibles OpenAI / Anthropic
+- Recherche, filtres et export JSON du portail
 - Backends d’inférence dépendants du matériel avec repli CPU
 
 ## Licence
