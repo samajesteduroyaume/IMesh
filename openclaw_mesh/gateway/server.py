@@ -162,11 +162,23 @@ def create_app(registry: SkillRegistry | None = None, discovery: MeshDiscovery |
             )
         return peers
 
+    def check_auth(request: Request) -> None:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+            # Use the db from app.state so tests can inject a different instance
+            _db = getattr(request.app.state, "gateway_db", db)
+            if not _db.is_valid_key(token):
+                raise HTTPException(status_code=401, detail="Invalid API key")
+            return
+        if getattr(settings, "auth_required", False):
+            raise HTTPException(status_code=401, detail="Authorization header with valid Bearer token is required")
+
     async def invoke_skill(skill_name: str, payload: dict[str, Any] | None = None) -> Any:
         if skill_name not in skill_registry:
             raise KeyError(f"unknown skill: {skill_name}")
         add_log("info", f"Executing skill {skill_name}", skill=skill_name)
-        return skill_registry.call(skill_name, payload or {})
+        return await skill_registry.acall(skill_name, payload or {})
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, Any]:
@@ -196,6 +208,7 @@ def create_app(registry: SkillRegistry | None = None, discovery: MeshDiscovery |
 
     @app.post("/api/v1/execute")
     async def execute(request: Request) -> dict[str, Any]:
+        check_auth(request)
         body = await request.json()
         skill = body.get("skill", "echo")
         payload = body.get("payload", {}) if isinstance(body.get("payload", {}), dict) else {}
@@ -223,6 +236,7 @@ def create_app(registry: SkillRegistry | None = None, discovery: MeshDiscovery |
 
     @app.post("/v1/chat/completions")
     async def openai_chat(request: Request) -> dict[str, Any]:
+        check_auth(request)
         body = await request.json()
         messages = body.get("messages", []) or []
         prompt = _extract_last_user_message(messages)
@@ -259,6 +273,7 @@ def create_app(registry: SkillRegistry | None = None, discovery: MeshDiscovery |
 
     @app.post("/v1/messages")
     async def anthropic_messages(request: Request) -> dict[str, Any]:
+        check_auth(request)
         body = await request.json()
         messages = body.get("messages", []) or []
         prompt = _extract_last_user_message(messages)

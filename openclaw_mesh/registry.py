@@ -86,7 +86,17 @@ class SkillRegistry:
 
         result = invoke()
         if inspect.isawaitable(result):
-            return asyncio.get_event_loop().run_until_complete(result)
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    return pool.submit(asyncio.run, result).result()
+            return asyncio.run(result)
+
         if inspect.isgenerator(result):
             return list(result)
         if isinstance(result, AsyncGenerator):
@@ -96,7 +106,48 @@ class SkillRegistry:
                     items.append(item)
                 return items
 
-            return asyncio.get_event_loop().run_until_complete(_collect())
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    return pool.submit(asyncio.run, _collect()).result()
+            return asyncio.run(_collect())
+        return result
+
+    async def acall(self, name: str, payload: dict[str, Any] | None = None) -> Any:
+        skill = self.get(name)
+        payload = payload or {}
+        func = skill.func
+
+        if asyncio.iscoroutinefunction(func):
+            try:
+                return await func(**payload)
+            except TypeError:
+                return await func(payload)
+
+        def invoke() -> Any:
+            try:
+                return func(**payload)
+            except TypeError:
+                try:
+                    return func(payload)
+                except TypeError:
+                    raise
+
+        result = await asyncio.to_thread(invoke)
+        if inspect.isawaitable(result):
+            return await result
+        if inspect.isgenerator(result):
+            return list(result)
+        if isinstance(result, AsyncGenerator):
+            items: list[Any] = []
+            async for item in result:
+                items.append(item)
+            return items
         return result
 
 

@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     gateway_port: int = Field(default=8000)
     gateway_db_path: str = Field(default="./openclaw_gateway.db")
     peer_ttl_seconds: int = Field(default=120)
+    auth_required: bool = Field(default=False)
     log_level: str = Field(default="INFO")
 
     @classmethod

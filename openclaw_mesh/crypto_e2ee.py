@@ -25,27 +25,32 @@ class E2EEChannel:
         self._shared_key: bytes | None = None
         self._replay_cache: dict[str, int] = {}
         self._max_replay = 256
-        self.aead = None
+        self.aead: ChaCha20Poly1305 | None = None
         if remote_pub is not None:
-            self._shared_key = self.local_priv.exchange(remote_pub)
+            self._shared_key = derive_shared_key(self.local_priv, remote_pub)
             self.aead = ChaCha20Poly1305(self._shared_key)
 
     def _shared_secret(self) -> bytes:
         if self._shared_key is None:
             if self.remote_pub is None:
                 raise ValueError("remote public key required")
-            self._shared_key = self.local_priv.exchange(self.remote_pub)
+            self._shared_key = derive_shared_key(self.local_priv, self.remote_pub)
             self.aead = ChaCha20Poly1305(self._shared_key)
         return self._shared_key
 
     @classmethod
     def generate_pair(cls) -> tuple["E2EEChannel", x25519.X25519PublicKey, bytes]:
         local = cls()
-        return local, local.local_priv.public_key(), local._shared_secret()
+        pubkey = local.local_priv.public_key()
+        pubkey_bytes = pubkey.public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        return local, pubkey, pubkey_bytes
 
     def set_remote_public_key(self, public_key: x25519.X25519PublicKey) -> None:
         self.remote_pub = public_key
-        self._shared_key = self.local_priv.exchange(public_key)
+        self._shared_key = derive_shared_key(self.local_priv, public_key)
         self.aead = ChaCha20Poly1305(self._shared_key)
 
     def encrypt(self, payload: Any, associated_data: bytes | None = None, nonce: bytes | None = None) -> bytes:

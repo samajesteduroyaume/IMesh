@@ -34,6 +34,7 @@ class MeshDiscovery:
         self.peers: dict[str, PeerInfo] = {}
         self.zc: Zeroconf | None = None
         self.browser: Any | None = None
+        self._published_info: Any | None = None
 
     def add_service(self, zc: Any, type_: str, name: str) -> None:
         if self.zc is None:
@@ -55,7 +56,9 @@ class MeshDiscovery:
         )
 
     def remove_service(self, zc: Any, type_: str, name: str) -> None:
-        return None
+        peer_name = name.removesuffix(f".{type_}")
+        if peer_name in self.peers:
+            self.peers[peer_name].reachable = False
 
     def update_service(self, zc: Any, type_: str, name: str) -> None:
         self.add_service(zc, type_, name)
@@ -66,17 +69,30 @@ class MeshDiscovery:
         try:
             self.zc = Zeroconf()
             self.browser = ServiceBrowser(self.zc, "_openclawmesh._tcp.local.", listener=self)
-        except TypeError:
+        except (TypeError, OSError):
             self.browser = None
             if self.zc is not None:
                 self.zc.close()
                 self.zc = None
 
-    async def stop(self) -> None:
+    def _sync_stop(self) -> None:
         if self.zc is not None:
-            self.zc.close()
+            if self._published_info is not None:
+                try:
+                    self.zc.unregister_service(self._published_info)
+                except Exception:
+                    pass
+                self._published_info = None
+            try:
+                self.zc.close()
+            except Exception:
+                pass
             self.zc = None
         self.browser = None
+
+    async def stop(self) -> None:
+        import asyncio
+        await asyncio.to_thread(self._sync_stop)
 
     def add_peer(self, peer: PeerInfo) -> None:
         now = int(time.time())
@@ -93,7 +109,7 @@ class MeshDiscovery:
             all_peers.append(peer)
         return all_peers
 
-    def publish(self, skills: list[str] | None = None) -> None:
+    def _sync_publish(self, skills: list[str] | None = None) -> None:
         if self.zc is None or ServiceInfo is None:
             return
         service_type = "_openclawmesh._tcp.local."
@@ -105,7 +121,17 @@ class MeshDiscovery:
             port=self.port,
             properties={"skills": ",".join(skills or [])},
         )
-        self.zc.register_service(info)
+        self._published_info = info
+        try:
+            self.zc.register_service(info)
+        except Exception:
+            pass
+
+    async def publish(self, skills: list[str] | None = None) -> None:
+        import asyncio
+        if self.zc is None or ServiceInfo is None:
+            return
+        await asyncio.to_thread(self._sync_publish, skills)
 
     @staticmethod
     def _decode_skills(properties: dict[Any, Any]) -> list[str]:

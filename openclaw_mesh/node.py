@@ -39,6 +39,8 @@ class IMeshNode:
     async def start(self) -> None:
         self.server = await websockets.serve(self._handle_connection, self.host, self.port)
         await self.discovery.start()
+        remote_skills = [s.name for s in self.registry.list() if s.expose_remote]
+        await self.discovery.publish(skills=remote_skills)
 
     async def stop(self) -> None:
         if self.server is not None:
@@ -57,7 +59,7 @@ class IMeshNode:
 
             if isinstance(message, TaskRequest):
                 try:
-                    response = await self._handle_request(message)
+                    response = await self._handle_request(message, websocket)
                     if response is not None:
                         await websocket.send(json.dumps(response.to_dict()))
                 except Exception as exc:
@@ -72,7 +74,7 @@ class IMeshNode:
                         )
                     )
 
-    async def _handle_request(self, message: TaskRequest) -> TaskResponse | None:
+    async def _handle_request(self, message: TaskRequest, websocket=None) -> TaskResponse | None:
         now = asyncio.get_running_loop().time()
         for request_id, seen_at in list(self._seen_requests.items()):
             if now - seen_at > 60:
@@ -84,6 +86,8 @@ class IMeshNode:
             raise PermissionError("invalid request signature")
         if message.skill not in self.registry and message.skill not in {"_health", "_describe_skills"}:
             raise KeyError(f"unknown skill: {message.skill}")
+        if message.skill in self.registry and not self.registry.get(message.skill).expose_remote:
+            raise PermissionError(f"skill '{message.skill}' is not exposed for remote execution")
 
         async with self._lock:
             if len(self._active_tasks) >= self._max_active:
@@ -91,20 +95,24 @@ class IMeshNode:
             self._active_tasks.add(message.request_id)
 
         try:
-            result = await asyncio.wait_for(self._execute_skill(message), timeout=self._task_timeout)
+            result = await asyncio.wait_for(self._execute_skill(message, websocket), timeout=self._task_timeout)
+            is_streamed = False
+            if isinstance(result, dict) and result.get("_streamed"):
+                is_streamed = True
+                del result["_streamed"]
             return TaskResponse(
                 request_id=message.request_id,
                 ok=True,
                 result=result,
                 handled_by=self.host,
-                streamed=False,
+                streamed=is_streamed,
             )
         except Exception as exc:
             return TaskResponse(request_id=message.request_id, ok=False, error=str(exc), handled_by=self.host)
         finally:
             self._active_tasks.discard(message.request_id)
 
-    async def _execute_skill(self, message: TaskRequest) -> dict[str, Any]:
+    async def _execute_skill(self, message: TaskRequest, websocket=None) -> dict[str, Any]:
         if message.skill == "_health":
             return {"status": "ok"}
         if message.skill == "_describe_skills":
@@ -123,10 +131,38 @@ class IMeshNode:
                 except TypeError:
                     raise
 
+        import inspect as _inspect
         if asyncio.iscoroutinefunction(func):
-            value = await func(**payload)
+            try:
+                value = await func(**payload)
+            except TypeError:
+                value = await func(payload)
+            if isinstance(value, AsyncGenerator):
+                pass  # handled below
+            elif asyncio.iscoroutine(value):
+                value = await value
+        elif _inspect.isgeneratorfunction(func):
+            # Sync generator: iterate on event loop (items should be fast)
+            chunks: list[Any] = []
+            gen = invoke()
+            for idx, item in enumerate(gen):
+                chunks.append(item)
+                if websocket is not None:
+                    chunk_text = json.dumps(item) if isinstance(item, (dict, list)) else str(item)
+                    await websocket.send(TaskChunk(request_id=message.request_id, index=idx, chunk=chunk_text).to_json())
+            return {"items": chunks, "_streamed": bool(chunks and websocket is not None)}
+        elif _inspect.isasyncgenfunction(func):
+            chunks = []
+            idx = 0
+            async for item in func(**payload):
+                chunks.append(item)
+                if websocket is not None:
+                    chunk_text = json.dumps(item) if isinstance(item, (dict, list)) else str(item)
+                    await websocket.send(TaskChunk(request_id=message.request_id, index=idx, chunk=chunk_text).to_json())
+                idx += 1
+            return {"items": chunks, "_streamed": bool(chunks and websocket is not None)}
         elif callable(func):
-            value = invoke()
+            value = await asyncio.to_thread(invoke)
             if asyncio.iscoroutine(value):
                 value = await value
         else:
@@ -138,13 +174,6 @@ class IMeshNode:
             return {"items": value}
         if isinstance(value, (str, int, float, bool)):
             return {"value": value}
-        if isinstance(value, Generator):
-            return {"items": list(value)}
-        if isinstance(value, AsyncGenerator):
-            chunks: list[Any] = []
-            async for item in value:
-                chunks.append(item)
-            return {"items": chunks}
         return {"value": str(value)}
 
 

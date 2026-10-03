@@ -10,13 +10,19 @@ from .config import get_settings
 from .protocol import TaskChunk, TaskRequest, TaskResponse, parse_message
 
 
+class MeshTaskError(RuntimeError):
+    def __init__(self, message: str, request_id: str | None = None) -> None:
+        super().__init__(message)
+        self.request_id = request_id
+
+
 class MeshClient:
     def __init__(self, client_name: str | None = None, secret: str | None = None) -> None:
         settings = get_settings()
         self.client_name = client_name or settings.client_name
         self.secret = secret or settings.psk or "openclaw-dev-secret"
         self.peers: dict[str, str] = {}
-        self.connections: dict[str, websockets.WebSocketClientProtocol] = {}
+        self.connections: dict[str, Any] = {}
         self._reader_tasks: dict[str, asyncio.Task[None]] = {}
         self._peer_metadata: dict[str, dict[str, Any]] = {}
 
@@ -29,17 +35,29 @@ class MeshClient:
         return None
 
     async def stop(self) -> None:
-        for ws in self.connections.values():
-            await ws.close()
+        for ws in list(self.connections.values()):
+            try:
+                await ws.close()
+            except Exception:
+                pass
         self.connections.clear()
         self._reader_tasks.clear()
 
     async def _connect(self, endpoint: str):
+        existing = self.connections.get(endpoint)
+        if existing is not None:
+            try:
+                if getattr(existing, "open", False) or not getattr(existing, "closed", True):
+                    return existing
+            except Exception:
+                pass
         ws = await websockets.connect(endpoint)
         self.connections[endpoint] = ws
         return ws
 
     async def call(self, peer: str, skill: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        if peer not in self.peers:
+            raise KeyError(f"unknown peer: {peer}")
         endpoint = self.peers[peer]
         request = TaskRequest(skill=skill, payload=payload or {}, origin=self.client_name)
         request.sign(self.secret)
@@ -47,6 +65,8 @@ class MeshClient:
         await ws.send(request.to_json())
         response_json = await ws.recv()
         response = TaskResponse.from_dict(json.loads(response_json))
+        if not response.ok:
+            raise MeshTaskError(response.error or "task execution failed", request_id=response.request_id)
         return response.result
 
     async def stream_call(
@@ -56,6 +76,8 @@ class MeshClient:
         payload: dict[str, Any] | None = None,
         on_chunk: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
+        if peer not in self.peers:
+            raise KeyError(f"unknown peer: {peer}")
         endpoint = self.peers[peer]
         request = TaskRequest(skill=skill, payload=payload or {}, origin=self.client_name)
         request.sign(self.secret)
@@ -69,6 +91,8 @@ class MeshClient:
                 if on_chunk is not None:
                     on_chunk({"request_id": message.request_id, "index": message.index, "chunk": message.chunk})
             elif isinstance(message, TaskResponse):
+                if not message.ok:
+                    raise MeshTaskError(message.error or "streaming task execution failed", request_id=message.request_id)
                 final_result = message.result
                 break
         return final_result

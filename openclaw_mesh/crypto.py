@@ -90,18 +90,21 @@ class TrustStore:
 
 
 def generate_ephemeral_tls_cert(common_name: str = "localhost") -> tuple[str, str]:
+    import datetime
+
     key = ed25519.Ed25519PrivateKey.generate()
     subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
+    now = datetime.datetime.now(datetime.timezone.utc)
     builder = (
         x509.CertificateBuilder()
         .subject_name(subject)
         .issuer_name(issuer)
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(__import__("datetime").datetime.utcnow())
-        .not_valid_after(__import__("datetime").datetime.utcnow() + __import__("datetime").timedelta(days=1))
+        .not_valid_before(now)
+        .not_valid_after(now + datetime.timedelta(days=1))
     )
-    cert = builder.sign(key, hashes.SHA256())
+    cert = builder.sign(key, None)
     cert_pem = cert.public_bytes(serialization.Encoding.PEM)
     key_pem = key.private_bytes(
         encoding=serialization.Encoding.PEM,

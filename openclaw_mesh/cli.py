@@ -90,8 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
     gateway_cmd.add_argument("--host", default="127.0.0.1")
     gateway_cmd.add_argument("--port", type=int, default=8000)
 
-    subparsers.add_parser("keygen", help="generate a local identity")
-    subparsers.add_parser("identity", help="show local identity")
+    keygen_cmd = subparsers.add_parser("keygen", help="generate a local identity")
+    keygen_cmd.add_argument("--output", "-o", default=None, help="path to save identity key")
+
+    identity_cmd = subparsers.add_parser("identity", help="show local identity")
+    identity_cmd.add_argument("--key", "-k", default=None, help="path to identity key")
+
     subparsers.add_parser("health", help="show local health")
     subparsers.add_parser("version", help="show version")
 
@@ -99,9 +103,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from pathlib import Path
+    from .crypto import NodeIdentity
+
     parser = build_parser()
     args = parser.parse_args(argv)
-    reload_settings()
+    settings = reload_settings()
 
     if args.command in {"start", "node"}:
         asyncio.run(_start_node(args.host, args.port, getattr(args, "no_wan", False)))
@@ -112,6 +119,45 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "gateway":
         asyncio.run(_gateway(args.host, args.port))
+        return 0
+    if args.command == "keygen":
+        target_path = Path(args.output or settings.identity_key_path)
+        identity = NodeIdentity.generate()
+        identity.save(target_path)
+        print(
+            json.dumps(
+                {
+                    "status": "generated",
+                    "key_path": str(target_path.resolve()),
+                    "public_key": identity.public_pem().decode("utf-8"),
+                },
+                indent=2,
+            )
+        )
+        return 0
+    if args.command == "identity":
+        key_path = Path(args.key or settings.identity_key_path)
+        if not key_path.exists():
+            print(
+                json.dumps(
+                    {
+                        "error": f"Identity key not found at {key_path}. Run 'openclaw-mesh keygen' first."
+                    },
+                    indent=2,
+                )
+            )
+            return 1
+        identity = NodeIdentity.load(key_path)
+        print(
+            json.dumps(
+                {
+                    "node_name": settings.node_name,
+                    "key_path": str(key_path.resolve()),
+                    "public_key": identity.public_pem().decode("utf-8"),
+                },
+                indent=2,
+            )
+        )
         return 0
     if args.command == "version":
         print("openclaw-mesh 0.1.0")
