@@ -1,3 +1,24 @@
+"""Skill registry for IMesh.
+
+Central store for all skills (functions, coroutines, generators) that a node
+can execute locally or expose to remote callers.
+
+Typical usage::
+
+    from openclaw_mesh.registry import SkillRegistry
+
+    registry = SkillRegistry()
+
+    @registry.register(name="add", description="Add two numbers")
+    def add(x: int, y: int) -> dict:
+        return {"sum": x + y}
+
+    # Sync call (safe inside or outside an event loop)
+    result = registry.call("add", {"x": 1, "y": 2})
+
+    # Async call (preferred inside async contexts)
+    result = await registry.acall("add", {"x": 1, "y": 2})
+"""
 from __future__ import annotations
 
 import asyncio
@@ -9,6 +30,17 @@ from typing import Any
 
 @dataclass(slots=True)
 class SkillDefinition:
+    """Metadata and callable for a registered skill.
+
+    Attributes:
+        name: Unique skill identifier.
+        description: Human-readable description (returned via ``_describe_skills``).
+        func: The callable to invoke. May be sync, async, a generator or an async generator.
+        schema: Optional Pydantic model for payload validation.
+        expose_remote: When ``False`` the skill can be called locally but is
+            rejected at the WebSocket protocol level if invoked from a remote peer.
+    """
+
     name: str
     description: str
     func: Callable[..., Any]
@@ -16,6 +48,7 @@ class SkillDefinition:
     expose_remote: bool = True
 
     def to_tool(self) -> dict[str, Any]:
+        """Serialise this skill as an OpenAI-style tool descriptor."""
         tool = {
             "name": self.name,
             "description": self.description,
@@ -28,10 +61,33 @@ class SkillDefinition:
 
 
 class SkillRegistry:
+    """Central registry for IMesh skills.
+
+    Skills are callables (sync, async, generator or async-generator) registered
+    under a unique name. The registry dispatches calls safely whether or not an
+    asyncio event loop is already running.
+    """
+
     def __init__(self) -> None:
         self._skills: dict[str, SkillDefinition] = {}
 
-    def register(self, name: str | None = None, description: str = "", schema: type | None = None, expose_remote: bool = True):
+    def register(
+        self,
+        name: str | None = None,
+        description: str = "",
+        schema: type | None = None,
+        expose_remote: bool = True,
+    ):
+        """Decorator that registers a skill under *name* (defaults to ``func.__name__``).
+
+        Args:
+            name: Skill name. Defaults to the decorated function's ``__name__``.
+            description: Human-readable description. Falls back to the function docstring.
+            schema: Optional Pydantic model for payload validation.
+            expose_remote: If ``False``, the skill is rejected when called over WebSocket
+                by a remote peer.
+        """
+
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             skill_name = name or func.__name__
             self._skills[skill_name] = SkillDefinition(

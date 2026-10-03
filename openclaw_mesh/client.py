@@ -1,3 +1,24 @@
+"""WebSocket client for the IMesh mesh.
+
+Use :class:`MeshClient` to connect to remote :class:`~openclaw_mesh.node.IMeshNode`
+peers, sign and dispatch task requests, receive streaming chunk frames, and
+collect final responses.
+
+Typical usage::
+
+    import asyncio
+    from openclaw_mesh.client import MeshClient, MeshTaskError
+
+    async def main():
+        client = MeshClient(secret="my-psk")
+        client.add_peer("node-a", "ws://192.168.1.10:8765")
+        try:
+            result = await client.call("node-a", "echo", {"hello": "world"})
+        except MeshTaskError as e:
+            print(f"Task failed: {e} (request_id={e.request_id})")
+        finally:
+            await client.stop()
+"""
 from __future__ import annotations
 
 import asyncio
@@ -11,12 +32,30 @@ from .protocol import TaskChunk, TaskRequest, TaskResponse, parse_message
 
 
 class MeshTaskError(RuntimeError):
+    """Raised when a remote node returns ``ok=False`` in a :class:`~openclaw_mesh.protocol.TaskResponse`.
+
+    Attributes:
+        request_id: The request ID of the failed task, for traceability.
+    """
+
     def __init__(self, message: str, request_id: str | None = None) -> None:
         super().__init__(message)
         self.request_id = request_id
 
 
 class MeshClient:
+    """Async WebSocket client for the IMesh peer-to-peer mesh.
+
+    Manages named peer endpoints and connection reuse. Signs every outgoing
+    :class:`~openclaw_mesh.protocol.TaskRequest` with the pre-shared HMAC key.
+
+    Args:
+        client_name: Origin identifier embedded in task requests.
+            Defaults to ``OPENCLAW_CLIENT_NAME``.
+        secret: Pre-shared key for HMAC signing.
+            Defaults to ``OPENCLAW_PSK`` or ``"openclaw-dev-secret"``.
+    """
+
     def __init__(self, client_name: str | None = None, secret: str | None = None) -> None:
         settings = get_settings()
         self.client_name = client_name or settings.client_name

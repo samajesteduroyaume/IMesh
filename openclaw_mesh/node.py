@@ -1,3 +1,31 @@
+"""IMesh WebSocket node.
+
+:class:`IMeshNode` is the core runtime of an IMesh mesh participant.  It
+binds a WebSocket server, handles incoming :class:`~openclaw_mesh.protocol.TaskRequest`
+frames, enforces HMAC signature and replay-protection, executes skills via
+the :class:`~openclaw_mesh.registry.SkillRegistry`, streams
+:class:`~openclaw_mesh.protocol.TaskChunk` frames for generator skills, and
+registers itself on the local mDNS network at startup.
+
+Quick start::
+
+    import asyncio
+    from openclaw_mesh.node import IMeshNode
+    from openclaw_mesh.registry import SkillRegistry
+
+    registry = SkillRegistry()
+
+    @registry.register("greet")
+    def greet(name: str) -> dict:
+        return {"hello": name}
+
+    async def main():
+        node = IMeshNode(host="127.0.0.1", port=8765, registry=registry)
+        await node.start()
+        await asyncio.Future()  # run forever
+
+    asyncio.run(main())
+"""
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +42,21 @@ from .registry import SkillRegistry, get_default_registry
 
 
 class IMeshNode:
+    """Async WebSocket mesh node.
+
+    Binds a WebSocket server, publishes skills via mDNS, and dispatches
+    incoming :class:`~openclaw_mesh.protocol.TaskRequest` frames to registered skills.
+
+    Args:
+        host: Bind address. Defaults to ``OPENCLAW_DEFAULT_HOST`` (``127.0.0.1``).
+        port: Bind port. Defaults to ``OPENCLAW_DEFAULT_PORT`` (``8765``).
+        registry: :class:`~openclaw_mesh.registry.SkillRegistry` to use.
+            Defaults to the module-level singleton.
+        secret: Pre-shared HMAC key. Defaults to ``OPENCLAW_PSK``.
+        discovery: :class:`~openclaw_mesh.discovery.MeshDiscovery` instance.
+            Created automatically if not provided.
+    """
+
     def __init__(
         self,
         host: str | None = None,

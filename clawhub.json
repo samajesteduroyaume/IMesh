@@ -1,11 +1,43 @@
 {
   "name": "imesh",
-  "version": "0.1.0",
-  "description": "Operate a secure local-first IMesh network for AI agents.",
+  "version": "0.2.0",
+  "description": "Operate a secure, local-first IMesh network for AI agents: start nodes, discover peers via mDNS, call remote skills, manage identities and API keys, and monitor the mesh via the FastAPI gateway and web portal.",
   "license": "MIT",
+  "homepage": "https://github.com/samajesteduroyaume/IMesh",
   "skills": [
     "skills/imesh/SKILL.md"
   ],
+  "commands": [
+    "IMesh start",
+    "IMesh discover",
+    "IMesh call",
+    "IMesh gateway",
+    "IMesh keygen",
+    "IMesh identity",
+    "IMesh health",
+    "IMesh version"
+  ],
+  "endpoints": {
+    "health": "GET /api/v1/health",
+    "skills": "GET /api/v1/skills",
+    "peers": "GET /api/v1/peers",
+    "models": "GET /api/v1/models",
+    "portal": "GET /api/v1/portal-data",
+    "execute": "POST /api/v1/execute",
+    "checkout": "POST /api/v1/checkout/free-key",
+    "openai_chat": "POST /v1/chat/completions",
+    "anthropic_messages": "POST /v1/messages"
+  },
+  "env": {
+    "OPENCLAW_PSK": "Pre-shared secret for HMAC signing",
+    "OPENCLAW_DEFAULT_PORT": "Node WebSocket port (default 8765)",
+    "OPENCLAW_MDNS_ENABLED": "Enable mDNS peer discovery (default true)",
+    "OPENCLAW_WAN_ENABLED": "Enable WAN transport (default false)",
+    "OPENCLAW_AUTH_REQUIRED": "Require Bearer token on execution endpoints (default false)",
+    "OPENCLAW_GATEWAY_DB_PATH": "SQLite database path (default ./openclaw_gateway.db)",
+    "OPENCLAW_IDENTITY_KEY_PATH": "Ed25519 private key path (default ./.openclaw_identity.pem)",
+    "OPENCLAW_PEER_TTL_SECONDS": "Peer expiry TTL in seconds (default 120)"
+  },
   "runtime": {
     "python": ">=3.10",
     "package": "IMesh"
